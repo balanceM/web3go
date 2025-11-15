@@ -1,0 +1,30 @@
+package main2
+
+// sqlx
+import (
+	"fmt"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
+)
+
+type Book struct {
+	Id     int     `db:"id"`
+	Title  string  `db:"name"`
+	Author string  `db:"author"`
+	Price  float64 `db:"price"`
+}
+
+func main() {
+	db, err := sqlx.Connect("mysql", "root:root@tcp(127.0.0.1:3306)/goprac?charset=utf8mb4&parseTime=true")
+	if err != nil {
+		fmt.Printf("Connect to database failed: %v\n", err.Error())
+		return
+	}
+	//
+	books := []Book{}
+	db.Select(&books, "Select * from books where price > ?", 50)
+	for _, book := range books {
+		fmt.Printf("Book: %v\n", book)
+	}
+}

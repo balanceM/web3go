@@ -1,5 +1,6 @@
 package main
 
+// sqlx
 import (
 	"fmt"
 
@@ -15,13 +16,13 @@ type Employee struct {
 }
 
 func main() {
-	dsn := "root:liu123@tcp(127.0.0.1:3306)/goprac?charset=utf8mb4&parseTime=true"
+	dsn := "root:root@tcp(127.0.0.1:3306)/goprac?charset=utf8mb4&parseTime=true"
 	db, err := sqlx.Connect("mysql", dsn)
 	if err != nil {
 		fmt.Printf("Database connect failed: %v\n", err.Error())
 		return
 	}
-	//
+	//所有部门为 "技术部" 的员工信息
 	emps := []Employee{}
 	err = db.Select(&emps, "Select * from employees where department = '技术部'")
 	if err != nil {
@@ -29,4 +30,12 @@ func main() {
 		return
 	}
 	fmt.Println(emps)
+	// 工资最高的员工信息
+	emp := Employee{}
+	err = db.Get(&emp, "Select * from employees order by salary desc limit 1")
+	if err != nil {
+		fmt.Printf("Get employee failed: %v\n", err.Error())
+		return
+	}
+	fmt.Println(emp)
 }
