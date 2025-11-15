@@ -1,4 +1,4 @@
-package main2
+package sqlx2
 
 // sqlx
 import (
@@ -15,7 +15,7 @@ type Book struct {
 	Price  float64 `db:"price"`
 }
 
-func main() {
+func Run() {
 	db, err := sqlx.Connect("mysql", "root:root@tcp(127.0.0.1:3306)/goprac?charset=utf8mb4&parseTime=true")
 	if err != nil {
 		fmt.Printf("Connect to database failed: %v\n", err.Error())

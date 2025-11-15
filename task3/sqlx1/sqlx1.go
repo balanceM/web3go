@@ -1,4 +1,4 @@
-package main
+package sqlx1
 
 // sqlx
 import (
@@ -15,7 +15,7 @@ type Employee struct {
 	Salary     int    `db:"salary"`
 }
 
-func main() {
+func Run() {
 	dsn := "root:root@tcp(127.0.0.1:3306)/goprac?charset=utf8mb4&parseTime=true"
 	db, err := sqlx.Connect("mysql", dsn)
 	if err != nil {

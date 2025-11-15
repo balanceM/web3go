@@ -1,4 +1,4 @@
-package main
+package gorm_t
 
 import (
 	"fmt"
@@ -84,7 +84,7 @@ func getPostWithMostComments(db *gorm.DB) (Post, error) {
 	return post, err
 }
 
-func main() {
+func Run() {
 	dsn := "root:root@tcp(127.0.0.1:3306)/goprac?charset=utf8mb4&parseTime=true"
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
