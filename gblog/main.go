@@ -12,7 +12,7 @@ import (
 type User struct {
 	gorm.Model
 	Username string `gorm:"unique" form:"username" binding:"required"`
-	Password string `form:"password" bingding:"required"`
+	Password string `form:"password" binding:"required"`
 	Email    string `form:"email"`
 }
 
@@ -49,6 +49,15 @@ var db = initDB()
 // 密码加密中间件
 func PasswordEncrypt() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 先调用 ParseMultipartForm 解析, 否则可能无法正确获取字段
+		if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+			c.JSON(500, gin.H{
+				"error": "Parse form failed!",
+			})
+			c.Abort()
+			return
+		}
+		// 获取密码字段
 		password := c.PostForm("password")
 		if password == "" {
 			c.Next()
@@ -63,16 +72,12 @@ func PasswordEncrypt() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		// 先调用 ParseMultipartForm 解析, 否则可能无法正确获取字段
-		if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
-			c.JSON(500, gin.H{
-				"error": "Parse form failed!",
-			})
-			c.Abort()
-			return
-		}
 		// 重新设置password
-		c.Request.PostForm.Set("password", string(hashedPassword))
+		// c.Request.PostForm.Set("password", string(hashedPassword)) //这种方式，
+		// 修改请求里的form数据无用，因为后续方法读取的form值来自于原始请求
+
+		//存储加密后密码
+		c.Set("hashedPassword", string(hashedPassword))
 		c.Next()
 	}
 }
@@ -81,14 +86,22 @@ func PasswordEncrypt() gin.HandlerFunc {
 func registerHandler(c *gin.Context) {
 	var user User
 	if err := c.ShouldBind(&user); err != nil {
-		c.JSON(http.StatusAccepted, gin.H{
+		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})
 		c.Abort()
 		return
 	}
+	// 从上下文获取加密后的密码
+	hashedPassword, exists := c.Get("hashedPassword")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "password not encrypted"})
+		return
+	}
+	user.Password = hashedPassword.(string)
+	// 创建
 	if err := db.Create(&user).Error; err != nil {
-		c.JSON(http.StatusCreated, gin.H{
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		c.Abort()
