@@ -16,6 +16,12 @@ type User struct {
 	Email    string `form:"email"`
 }
 
+type LoginUser struct {
+	Username string `form:"username" binding:"required"`
+	Password string `form:"password" binding:"required"`
+	Email    string `form:"email"`
+}
+
 type Post struct {
 	gorm.Model
 	Title   string
@@ -107,14 +113,55 @@ func registerHandler(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	// 生成token
+	token, err := GenerateToken(user.ID, user.Username)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token generate failed"})
+		return
+	}
+	// 返回
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
+		"token":   token,
+	})
+}
+
+// 登录
+func loginHandler(c *gin.Context) {
+	var user User
+	username := c.PostForm("username")
+	result := db.Where("username = ?", username).First(&user)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user not exist"})
+		return
+	}
+	// 比较密码
+	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(c.PostForm("password")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is not correct"})
+		return
+	}
+	// 生成token
+	token, err := GenerateToken(user.ID, user.Username)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token generate failed"})
+		return
+	}
+	// 返回
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"token":   token,
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+		},
 	})
 }
 
 func main() {
 	r := gin.Default()
 	r.POST("/register", PasswordEncrypt(), registerHandler)
+	r.POST("/login", loginHandler)
 
 	r.Run(":8080")
 }
