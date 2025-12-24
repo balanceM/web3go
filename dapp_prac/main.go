@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -17,16 +18,144 @@ import (
 )
 
 func main() {
-	// alchemyRpcUrl := "https://eth-sepolia.g.alchemy.com/v2/3KcnR4Q-vakMtRYSMPTck"
-	// client, err := ethclient.Dial(alchemyRpcUrl)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	alchemyRpcUrl := "https://eth-sepolia.g.alchemy.com/v2/3KcnR4Q-vakMtRYSMPTck"
+	client, err := ethclient.Dial(alchemyRpcUrl)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// blockNumber := big.NewInt(5671744)
 	// block := findBlock(client, blockNumber)
 	// findTransaction(client, block)
 	// findReceipt(client, blockNumber)
-	createNewWallet()
+	// createNewWallet()
+	createTransaction(client)
+}
+
+// 代币转账
+func tokenTransfer(client *ethclient.Client) {
+	// Account1 private key:
+	privateKey, err := crypto.HexToECDSA("private key")
+	if err != nil {
+		log.Fatal(err)
+	}
+	//
+	publicKey := privateKey.Public()
+	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
+	}
+	//
+	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
+	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//
+	value := big.NewInt(0)
+	// 预估gas费
+	gasPrice, err := client.SuggestGasPrice(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 代币接收方地址
+	toAddress := common.HexToAddress("0x4592d8f8d7b001e72cb26a73e4fa1806a51ac79d")
+	// 代币合约地址
+	tokenAddress := common.HexToAddress("0x28b149020d2152179873ec60bed6bf7cd705775d")
+	// 生成函数签名的 Keccak256 哈希
+	transferFnSignature := []byte("transfer(address,uint256)")
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write(transferFnSignature)
+	methodID := hash.Sum(nil)[:4]
+	fmt.Println(hexutil.Encode(methodID)) // 0xa9059cbb
+	// 代币接收方地址 左填充到32字节
+	paddedAddress := common.LeftPadBytes(toAddress.Bytes(), 32)
+	fmt.Println(hexutil.Encode(paddedAddress))
+	// 1,000 个代币，在 big.Int 中格式化为 wei。
+	amount := new(big.Int)
+	amount.SetString("1000000000000000000000", 10) // 1000 tokens
+	// 代币量左填充到 32 个字节。
+	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
+	fmt.Println(hexutil.Encode(paddedAmount))
+	// 将方法 ID，填充后的地址和填后的转账量，接到将成为我们数据字段的字节片。
+	var data []byte
+	data = append(data, methodID...)
+	data = append(data, paddedAddress...)
+	data = append(data, paddedAmount...)
+	// 估算完成交易所需的估计燃气上限
+	gasLimit, err := client.EstimateGas(context.Background(), ethereum.CallMsg{
+		To:   &tokenAddress,
+		Data: data,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(gasLimit)
+	// 生成未签名以太坊事务
+	tx := types.NewTransaction(nonce, tokenAddress, value, gasLimit, gasPrice, data)
+	// 使用发件人的私钥对事务进行签名
+	chainID, err := client.NetworkID(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 发送交易
+	err = client.SendTransaction(context.Background(), signedTx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("tx sent: %s", signedTx.Hash().Hex())
+}
+
+// ETH转账
+func createTransaction(client *ethclient.Client) {
+	// Account1 private key:
+	privateKey, err := crypto.HexToECDSA("private key")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 从私钥派生发送账户的公共地址
+	publicKey := privateKey.Public()
+	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal("cannot assert type: publicKey is not of type *ecdsa.PublicKey")
+	}
+	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
+	// 生成账户交易的随机数
+	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// gas
+	value := big.NewInt(100000000000000000) // in wei (0.1 eth)
+	gasLimit := uint64(21000)               // 转账的燃气上限为"21000"单位
+	// gasPrice := big.NewInt(30000000000)      // 打包交易的燃气价格为30 Gwei
+	gasPrice, err := client.SuggestGasPrice(context.Background()) // 根据'x'个先前块来获得平均燃气价格。
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 接收方
+	// TestAccount2 public key: 0x72a99330b6872F1713E02D68Fb6e71De7a03f780
+	toAddress := common.HexToAddress("0x72a99330b6872F1713E02D68Fb6e71De7a03f780")
+	// 生成未签名以太坊事务
+	tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, nil)
+	// 使用发件人的私钥对事务进行签名
+	chainID, err := client.NetworkID(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 调用 SendTransaction 来将已签名的事务广播到整个网络
+	err = client.SendTransaction(context.Background(), signedTx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("tx sent: %s", signedTx.Hash().Hex()) // tx sent: 0x42d14fa6f4a9f9ccfe898761bd26bef738d2c71c99bb9453f36f61a007df12bb
 }
 
 // 创建新钱包
