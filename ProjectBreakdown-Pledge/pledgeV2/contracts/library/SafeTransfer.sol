@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+// 部分非标准 ERC20 代币不会在操作失败时抛出异常，而是返回false，这会导致合约逻辑误以为操作成功，进而引发资产丢失或逻辑错误。
+// SafeERC20库的核心价值就是：统一 ERC20 交互的错误处理逻辑，无论代币是否标准，操作失败时都会主动抛出异常，确保合约能捕获错误、终止执行。
 contract SafeTransfer {
     
     using SafeERC20 for IERC20;
