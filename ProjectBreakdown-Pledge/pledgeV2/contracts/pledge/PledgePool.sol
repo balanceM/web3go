@@ -42,7 +42,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         uint256 maxSupply; //池子的最大限额
         uint256 lendSupply; //出借方当前总存款量（lendToken总锁仓量）
         uint256 borrowSupply; //借款方当前总借款量（borrowToken总借出量）
-        uint256 martgageRate; //池的抵押率，单位是1e8
+        uint256 martgageRate; //池的抵押率，单位是1e8 (质押率 = 抵押物总价值 / 借款总价值，质押率必须大于1)
         address lendToken; //出借方存入的代币地址（如BUSD/USDT）
         address borrowToken;// 借款方借出的代币地址（如BTC/ETH）
         PoolState state; //状态 'MATCH, EXECUTION, FINISH, LIQUIDATION, UNDONE'
@@ -394,14 +394,75 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     
     // 检查是否已结算
     function checkoutSettle(uint256 _pid) public view returns (bool) {
-        uint256 storage poolBaseInfo = poolBaseInfo[_pid];
-        return block.timestamp > poolBaseInfo.settleTime;
+        uint256 storage pool = poolBaseInfo[_pid];
+        return block.timestamp > pool.settleTime;
     }
 
     // 结算
-    // function settle() {
+    function settle(uint256 _pid) public validCall timeAfter(_pid) stateMatch(_pid) {
+        // 获取池信息
+        PoolBaseInfo storage pool = poolBaseInfo[_pid];
+        PoolDataInfo storage data = poolDataInfo[_pid];
+        // 判断是否可匹配
+        if (pool.lendSupply > 0 && pool.borrowSupply > 0) { // 可匹配，进行结算
+            // 预言机获取价格
+            uint256[2] memory prices = getUnderlyingPriceView(_pid);
+            uint256 lendPrice = prices[0];
+            uint256 borrowPrice = prices[1];
+            // 当lendSupply全满足时，获取对应的borrowAmount
+            // 借款价值 = 借出价值 * 质押率
+            // 借款数量 = 借款价值 / 单价
+            uint256 matchBorrowAmount = pool.lendSupply.mul(lendPrice).mul(pool.martgageRate).div(borrowPrice).div(baseDecimal);
+            // borrowSupply不足matchBorrowAmount时
+            if (matchBorrowAmount > pool.borrowSupply) {
+                // 取borrowSupply全满足时, 获取matchLendAmount
+                uint256 matchLendAmount = pool.borrowSupply.mul(borrowPrice).mul(calDecimal).div(lendPrice).div(calDecimal).mul(baseDecimal).div(pool.martgageRate);
+                data.settleAmountBorrow = pool.borrowSupply;
+                data.settleAmountLend = matchLendAmount;
+            } else { // borrowSupply满足matchBorrowAmount
+                data.settleAmountBorrow = pool.matchBorrowAmount;
+                data.settleAmountLend = pool.lendSupply;
+            }
+            // 更新池状态
+            pool.state = PoolState.SETTLE;
+            emit StateChange(_pid, uint256(PoolState.MATCH), uint256(PoolState.EXECUTION));
+        } else { // 不可匹配，进入UNDONE状态
+            pool.state = PoolState.UNDONE;
+            data.settleAmountLend = pool.lendSupply;
+            data.settleAmountBorrow = pool.borrowSupply;
+            emit StateChange(_pid,uint256(PoolState.MATCH), uint256(PoolState.EXECUTION));
+        }
+    }
 
-    // }
+    function checkoutFinish(uint256 _pid) public view returns (bool) {
+        PoolBaseInfo storage pool = poolBaseInfo[_pid];
+        return block.timestamp > pool.endTime;
+    }
+
+    function finish(uint256 _pid) public validCall {
+        // 获取基础池子信息和数据信息
+        PoolBaseInfo storage pool = poolBaseInfo[_pid];
+        PoolDataInfo storage data = poolDataInfo[_pid];
+        // 判断
+        require(block.timestamp > pool.endTime, "finish: less than end time");
+        require(pool.state == PoolState.EXECUTION, "finish: state is not execution");
+        // 
+        uint256 totalValue = data.settleAmountBorrow + data.settleAmountBorrow.mul(pool.interestRate).div(baseDecimal);
+        
+    }
+
+    // 获取最新的预言机价格
+    function getUnderlyingPriceView(uint256 _pid) public view returns (uint256[2] memory) {
+        PoolBaseInfo storage pool = poolBaseInfo[_pid];
+        // 创建资产数组
+        uint256[2] memory assets = new uint256[](2);
+        // 将借款和贷款的token添加到资产数组中
+        assets[0] = uint256(pool.lendSupply);
+        assets[1] = uint256(pool.borrowSupply);
+        // 从预言机获取价格
+        uint256[] memory prices = oracle.getPrices(assets);
+        return [prices[0], prices[1]];
+    }
 
     // 
     modifier notPause() {
