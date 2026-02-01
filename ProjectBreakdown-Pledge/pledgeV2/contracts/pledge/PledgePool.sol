@@ -116,7 +116,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     // 设置最小数量事件，oldMinAmount是旧的最小数量，newMinAmount是新的最小数量
     event SetMinAmount(uint256 indexed oldMinAmount, uint256 indexed newMinAmount);
 
-    constructor(address _oracle, address _swapRouter, address payable _feeAddress, address _multiSignature) multiSignatureClient(_multiSignature) public {
+    constructor(address _oracle, address _swapRouter, address payable _feeAddress, address _multiSignature) multiSignatureClient(_multiSignature) {
         require(_oracle != address(0), "oracle address is zero");
         require(_swapRouter != address(0), "swap router address is zero");
         require(_feeAddress != address(0), "fee address is zero");
@@ -354,7 +354,6 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     function withDrawBorrow(uint256 _pid, uint256 _jpAmount) external nonReentrant notPause stateFinishLiquidation(_pid) {
         PoolBaseInfo storage pool = poolBaseInfo[_pid];
         PoolDataInfo storage data = poolDataInfo[_pid];
-        BorrowInfo storage borrowInfo = userBorrowInfo[msg.sender][_pid];
         require(_jpAmount > 0, "withDrawBorrow: jpAmount must be greater than zero");
         pool.jpCoin.burn(msg.sender, _jpAmount);
         // 计算销毁份额
