@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.12;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "../library/SafeTransfer.sol";
@@ -159,7 +159,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     // 创建池子
     function createPoolInfo(uint256 _settleTime, uint256 _endTime, uint256 _instrerestRate,
                             uint256 _maxSupply, uint256 _martgageRate, address _lendToken, address _borrowToken,
-                            IDebtToken _spCoin, IDebtToken _jpCoin, uint256 _autoLiquidateThreshold) validCall public {
+                            address _spToken, address _jpToken, uint256 _autoLiquidateThreshold) validCall public {
         require(_settleTime > block.timestamp, "createPool: settle time must be greater than current time");
         require(_endTime > _settleTime, "createPool: end time must be greater than settle time");
         require(_jpToken != address(0), "createPool: jpToken address is zero");
@@ -170,11 +170,14 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             endTime: _endTime,
             interestRate: _instrerestRate,
             maxSupply: _maxSupply,
-            mortgageRate: _martgageRate,
+            lendSupply: 0,
+            borrowSupply: 0,
+            martgageRate: _martgageRate,
             lendToken: _lendToken,
             borrowToken: _borrowToken,
-            spCoin: _spCoin,
-            jpCoin: _jpCoin,
+            state: defaultChoice,
+            spCoin: IDebtToken(_spToken),
+            jpCoin: IDebtToken(_jpToken),
             autoLiquidateThreshold: _autoLiquidateThreshold
         }));
 
@@ -198,7 +201,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         PoolBaseInfo storage pool = poolBaseInfo[_pid];
         LendInfo storage lendInfo = userLendInfo[msg.sender][_pid];
         require(_stakeAmount > 0, "depositLend: stake amount must be greater than zero");
-        require(_staleAmount <= pool.maxSupply - pool.lendSupply, "depositLend: stake amount must be less than max supply");
+        require(_stakeAmount <= pool.maxSupply - pool.lendSupply, "depositLend: stake amount must be less than max supply");
         uint256 amount = getPayableAmount(pool.lendToken, _stakeAmount);
         require(amount > minAmount, "depositLend: amount must be greater than min amount");
         // 
@@ -214,7 +217,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         PoolDataInfo storage data = poolDataInfo[_pid];
         LendInfo storage lendInfo = userLendInfo[msg.sender][_pid];
         require(lendInfo.stakeAmount > 0, "refundLend: not pledged");
-        require(pool.lendSupply - data.settleAmountLend > 0, "refundLend: not refund"));
+        require(pool.lendSupply - data.settleAmountLend > 0, "refundLend: not refund");
         require(!lendInfo.hasNoRefund, "refundLend: repeat refund");
 
         // 用户份额 = 当前质押金额 / 总金额
@@ -250,7 +253,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         emit ClaimLend(msg.sender, pool.borrowToken, spAmount); // 触发领取借款事件
     }
 
-    function WithdrawLend(uint256 _pid, uint256 _spAmount) external nonReentrant notPause stateFinishLiquidation(_pid) {
+    function withdrawLend(uint256 _pid, uint256 _spAmount) external nonReentrant notPause stateFinishLiquidation(_pid) {
         PoolBaseInfo storage pool = poolBaseInfo[_pid];
         PoolDataInfo storage data = poolDataInfo[_pid];
         // 销毁spCoin
@@ -265,7 +268,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             uint256 redeemAmount = data.finishAmountLend * spShare / calDecimal;
             // 退款动作
             _redeem(msg.sender, pool.lendToken, redeemAmount);
-            emit WithdrawLend(msg.sender, pool.lendToken, redeemAmount, _spAmount);
+            emit WithdrawLend(msg.sender, pool.lendToken, redeemAmount);
         }
         // 清算
         if (pool.state == PoolState.LIQUIDATION) {
@@ -274,7 +277,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             uint256 redeemAmount = data.liquidateAmountLend * spShare / calDecimal;
             // 退款动作
             _redeem(msg.sender, pool.lendToken, redeemAmount);
-            emit WithdrawLend(msg.sender, pool.lendToken, redeemAmount, _spAmount);
+            emit WithdrawLend(msg.sender, pool.lendToken, redeemAmount);
         }
     }
 
@@ -285,7 +288,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         require(lendInfo.stakeAmount > 0, "refundLend: not pledged"); // 要求质押金额大于0
         require(!lendInfo.hasNoRefund, "refundLend: again refund"); // 要求没有退款
         // 退款操作
-        _redeem(msg.sender,pool.lendToken,lendInfo.stakeAmount); // 执行赎回操作
+        _redeem(msg.sender, pool.lendToken, lendInfo.stakeAmount); // 执行赎回操作
         // 更新用户信息
         lendInfo.hasNoRefund = true; // 设置没有退款为真
         emit EmergencyLendWithdrawal(msg.sender, pool.lendToken, lendInfo.stakeAmount); // 触发紧急贷款提款事件
@@ -321,8 +324,8 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         // 退款操作
         _redeem(msg.sender, pool.borrowToken, refundAmount);
         // 更新用户信息
-        lendInfo.hasNoRefund = true;
-        lendInfo.refundAmount += refundAmount;
+        borrowInfo.hasNoRefund = true;
+        borrowInfo.refundAmount += refundAmount;
         // 退款事件记录
         emit RefundBorrow(msg.sender, pool.lendToken, refundAmount);
     }
@@ -392,7 +395,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     
     // 检查是否已结算
     function checkoutSettle(uint256 _pid) public view returns (bool) {
-        uint256 storage pool = poolBaseInfo[_pid];
+        PoolBaseInfo storage pool = poolBaseInfo[_pid];
         return block.timestamp > pool.settleTime;
     }
 
@@ -479,6 +482,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
 
     function checkoutLiquidate(uint256 _pid) external view returns (bool) {
         PoolBaseInfo storage pool = poolBaseInfo[_pid];
+        PoolDataInfo storage data = poolDataInfo[_pid];
         // 保证金价格
         uint256[2]memory prices = getUnderlyingPriceView(_pid); // 获取标的价格视图
         // 保证金当前价值 = 保证金数量 * 保证金价格
@@ -516,7 +520,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         // liquidationAmounBorrow  借款费用
         uint256 remainNowAmount = data.settleAmountBorrow - amountSell; // 剩余的现在的金额
         uint256 remainBorrowAmount = redeemFees(borrowFee, pool.borrowToken, remainNowAmount); // 剩余的借款金额
-        data.liquidationAmounBorrow = remianBorrowAmount;
+        data.liquidationAmounBorrow = remainBorrowAmount;
         // 更新池子状态
         pool.state = PoolState.LIQUIDATION;
          // 事件
@@ -546,8 +550,8 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     // 获取需要提供的token0数量
     function _getAmountIn(address _swapRouter, address _token0, address _token1, uint256 _amountout) internal view returns (uint256) {
         IUniswapV2Router02 IUniswap = IUniswapV2Router02(_swapRouter);
-        address[] memory path = _getSwapPath(swapRouter, token0, token1);
-        uint[] memory amounts = IUniswap.getAmountsIn(amountOut, path);
+        address[] memory path = _getSwapPath(swapRouter, _token0, _token1);
+        uint[] memory amounts = IUniswap.getAmountsIn(_amountout, path);
         return amounts[0];
     }
 
@@ -562,22 +566,22 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
 
     function _swap(address _swapRouter, address _token0, address _token1, address _amount0) internal returns (uint256) {
         if (_token0 != address(0)) {
-            _safeApprove(token0, address(_swapRouter), uint256(-1));
+            _safeApprove(_token0, address(_swapRouter), uint256(-1));
         }
-        if (token1 != address(0)) {
-            _safeApprove(token1, address(_swapRouter), uint256(-1));
+        if (_token1 != address(0)) {
+            _safeApprove(_token1, address(_swapRouter), uint256(-1));
         }
         IUniswapV2Router02 IUniswap = IUniswapV2Router02(_swapRouter);
-        address[] memory path = _getSwapPath(_swapRouter, token0, token1);
+        address[] memory path = _getSwapPath(_swapRouter, _token0, _token1);
         uint256[] memory amounts;
-        if (token0 == address(0)) {
+        if (_token0 == address(0)) {
             amounts = IUniswap.swapExactETHForTokens{value:_amount0}(0, path, address(this), now+30);
-        } else if (token1 == address(0)) {
+        } else if (_token1 == address(0)) {
             amounts = IUniswap.swapExactTokensForETH(_amount0, 0, path, address(this), now+30);
         } else {
             amounts = IUniswap.swapExactTokensForTokens(_amount0, 0, path, address(this), now+30);
         }
-        emit Swap(token0, token1, amounts[0], amounts[amounts.length-1]);
+        emit Swap(_token0, _token1, amounts[0], amounts[amounts.length-1]);
         return amounts[amounts.length-1];
     }
 
@@ -617,6 +621,11 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
 
     modifier stateMatch(uint256 _pid) {
         require(poolBaseInfo[_pid].state == PoolState.MATCH, "Pool state must be MATCH");
+        _;
+    }
+    
+    modifier stateUndone(uint256 _pid) {
+        require(poolBaseInfo[_pid].state == PoolState.UNDONE,"state: state must be Undone");
         _;
     }
 
