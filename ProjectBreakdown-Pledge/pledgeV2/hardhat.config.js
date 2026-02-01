@@ -114,6 +114,16 @@ module.exports = {
           // evmVersion: "shanghai"
         }
       },
+      {
+        version: "0.8.0",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1
+          },
+          // evmVersion: "shanghai"
+        }
+      }
     ]
   }
 };
