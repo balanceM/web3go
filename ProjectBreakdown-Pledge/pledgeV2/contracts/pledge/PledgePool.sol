@@ -225,7 +225,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         // refundAmount = 总退款金额 * 用户份额
         uint256 refundAmount = (pool.lendSupply - data.settleAmountLend) * userShare / calDecimal;
         // 退款操作
-        _redeem(msg.sender, pool.lendToken, refundAmount);
+        _redeem(payable(msg.sender), pool.lendToken, refundAmount);
         // 更新用户信息
         lendInfo.hasNoRefund = true;
         lendInfo.refundAmount += refundAmount;
@@ -267,7 +267,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             // 赎回金额 = finishAmountLend * 销毁份额
             uint256 redeemAmount = data.finishAmountLend * spShare / calDecimal;
             // 退款动作
-            _redeem(msg.sender, pool.lendToken, redeemAmount);
+            _redeem(payable(msg.sender), pool.lendToken, redeemAmount);
             emit WithdrawLend(msg.sender, pool.lendToken, redeemAmount);
         }
         // 清算
@@ -276,7 +276,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             // 赎回金额 = liquidateAmountLend * 销毁份额
             uint256 redeemAmount = data.liquidateAmountLend * spShare / calDecimal;
             // 退款动作
-            _redeem(msg.sender, pool.lendToken, redeemAmount);
+            _redeem(payable(msg.sender), pool.lendToken, redeemAmount);
             emit WithdrawLend(msg.sender, pool.lendToken, redeemAmount);
         }
     }
@@ -288,7 +288,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         require(lendInfo.stakeAmount > 0, "refundLend: not pledged"); // 要求质押金额大于0
         require(!lendInfo.hasNoRefund, "refundLend: again refund"); // 要求没有退款
         // 退款操作
-        _redeem(msg.sender, pool.lendToken, lendInfo.stakeAmount); // 执行赎回操作
+        _redeem(payable(msg.sender), pool.lendToken, lendInfo.stakeAmount); // 执行赎回操作
         // 更新用户信息
         lendInfo.hasNoRefund = true; // 设置没有退款为真
         emit EmergencyLendWithdrawal(msg.sender, pool.lendToken, lendInfo.stakeAmount); // 触发紧急贷款提款事件
@@ -322,7 +322,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         // refundAmount = 总退款金额 * 用户份额
         uint256 refundAmount = (pool.borrowSupply - data.settleAmountBorrow) * userShare / calDecimal;
         // 退款操作
-        _redeem(msg.sender, pool.borrowToken, refundAmount);
+        _redeem(payable(msg.sender), pool.borrowToken, refundAmount);
         // 更新用户信息
         borrowInfo.hasNoRefund = true;
         borrowInfo.refundAmount += refundAmount;
@@ -366,7 +366,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             // 赎回金额
             uint256 redeemAmount = data.finishAmountBorrow * userShare / calDecimal;
             // 退款动作
-            _redeem(msg.sender, pool.borrowToken, redeemAmount);
+            _redeem(payable(msg.sender), pool.borrowToken, redeemAmount);
             emit WithdrawBorrow(msg.sender, pool.borrowToken, redeemAmount, _jpAmount);
         }
         // 清算
@@ -375,7 +375,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             // 赎回金额
             uint256 redeemAmount = data.liquidateAmountBorrow * userShare / calDecimal;
             // 退款动作
-            _redeem(msg.sender, pool.borrowToken, redeemAmount);
+            _redeem(payable(msg.sender), pool.borrowToken, redeemAmount);
             emit WithdrawBorrow(msg.sender, pool.borrowToken, redeemAmount, _jpAmount);
         }
     }
@@ -387,7 +387,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         require(borrowInfo.stakeAmount > 0, "refundBorrow: not pledged");
         require(!borrowInfo.hasNoRefund, "refundBorrow: again refund");
         // 退款操作
-        _redeem(msg.sender, pool.borrowToken, borrowInfo.stakeAmount);
+        _redeem(payable(msg.sender), pool.borrowToken, borrowInfo.stakeAmount);
         // 更新用户信息
         borrowInfo.hasNoRefund = true;
         emit EmergencyBorrowWithdrawal(msg.sender, pool.borrowToken, borrowInfo.stakeAmount);
@@ -421,11 +421,11 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
                 data.settleAmountBorrow = pool.borrowSupply;
                 data.settleAmountLend = matchLendAmount;
             } else { // borrowSupply满足matchBorrowAmount
-                data.settleAmountBorrow = pool.matchBorrowAmount;
+                data.settleAmountBorrow = matchBorrowAmount;
                 data.settleAmountLend = pool.lendSupply;
             }
             // 更新池状态
-            pool.state = PoolState.SETTLE;
+            pool.state = PoolState.EXECUTION;
             emit StateChange(_pid, uint256(PoolState.MATCH), uint256(PoolState.EXECUTION));
         } else { // 不可匹配，进入UNDONE状态
             pool.state = PoolState.UNDONE;
@@ -513,14 +513,14 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
             uint256 feeAmount = amountIn - lendAmount; // 费用金额
             // 贷款费用
             _redeem(feeAddress,pool.lendToken, feeAmount);
-            data.liquidationAmounLend = amountIn - feeAmount;
+            data.liquidateAmountLend = amountIn - feeAmount;
         }else {
-            data.liquidationAmounLend = amountIn;
+            data.liquidateAmountLend = amountIn;
         }
         // liquidationAmounBorrow  借款费用
         uint256 remainNowAmount = data.settleAmountBorrow - amountSell; // 剩余的现在的金额
         uint256 remainBorrowAmount = redeemFees(borrowFee, pool.borrowToken, remainNowAmount); // 剩余的借款金额
-        data.liquidationAmounBorrow = remainBorrowAmount;
+        data.liquidateAmountBorrow = remainBorrowAmount;
         // 更新池子状态
         pool.state = PoolState.LIQUIDATION;
          // 事件
@@ -531,7 +531,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     function getUnderlyingPriceView(uint256 _pid) public view returns (uint256[2] memory) {
         PoolBaseInfo storage pool = poolBaseInfo[_pid];
         // 创建资产数组
-        uint256[2] memory assets = new uint256[](2);
+        uint256[] memory assets = new uint256[](2);
         // 将借款和贷款的token添加到资产数组中
         assets[0] = uint256(pool.lendSupply);
         assets[1] = uint256(pool.borrowSupply);
@@ -556,7 +556,7 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
     }
 
     // 获取交换路径
-    function _getSwapPath(address _swapRouter, address _token0, address _token1) internal view returns (address[] memory path) {
+    function _getSwapPath(address _swapRouter, address _token0, address _token1) internal pure returns (address[] memory path) {
         IUniswapV2Router02 IUniswap = IUniswapV2Router02(_swapRouter);
         path = new address[](2);
         path[0] = _token0 == address(0) ? IUniswap.WETH() : _token0;
@@ -564,22 +564,22 @@ contract PledgePool is ReentrancyGuard, SafeTransfer, multiSignatureClient {
         return path;
     }
 
-    function _swap(address _swapRouter, address _token0, address _token1, address _amount0) internal returns (uint256) {
+    function _swap(address _swapRouter, address _token0, address _token1, uint256 _amount0) internal returns (uint256) {
         if (_token0 != address(0)) {
-            _safeApprove(_token0, address(_swapRouter), uint256(-1));
+            _safeApprove(_token0, address(_swapRouter), type(uint256).max);
         }
         if (_token1 != address(0)) {
-            _safeApprove(_token1, address(_swapRouter), uint256(-1));
+            _safeApprove(_token1, address(_swapRouter), type(uint256).max);
         }
         IUniswapV2Router02 IUniswap = IUniswapV2Router02(_swapRouter);
         address[] memory path = _getSwapPath(_swapRouter, _token0, _token1);
         uint256[] memory amounts;
         if (_token0 == address(0)) {
-            amounts = IUniswap.swapExactETHForTokens{value:_amount0}(0, path, address(this), now+30);
+            amounts = IUniswap.swapExactETHForTokens{value:_amount0}(0, path, address(this), block.timestamp+30);
         } else if (_token1 == address(0)) {
-            amounts = IUniswap.swapExactTokensForETH(_amount0, 0, path, address(this), now+30);
+            amounts = IUniswap.swapExactTokensForETH(_amount0, 0, path, address(this), block.timestamp+30);
         } else {
-            amounts = IUniswap.swapExactTokensForTokens(_amount0, 0, path, address(this), now+30);
+            amounts = IUniswap.swapExactTokensForTokens(_amount0, 0, path, address(this), block.timestamp+30);
         }
         emit Swap(_token0, _token1, amounts[0], amounts[amounts.length-1]);
         return amounts[amounts.length-1];
