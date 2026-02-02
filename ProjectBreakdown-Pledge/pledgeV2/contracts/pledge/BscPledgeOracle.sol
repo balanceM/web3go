@@ -38,15 +38,21 @@ contract BscPledgeOracle is multiSignatureClient {
         return getUnderlyingPrice(uint256(asset));
     }
 
+    // *** 获取代币的最小底价 ***
+    // 例如，usdt代币, 预言机的返回精度decimals是10**8，则price显示的大约是1*10**8（也可能是99990000）
+    // 1. 当最小精度tokenDeciamls是10**6，即最小低价显示是1*10**(-6), 即0.000001
+    //    按erc20的18位表示，即是 10**(18-6) = 10**12
+    // 2. 当最小精度tokenDecimals是10**20，即最低价是1*10**(-20), 即0.00000000000000000001
+    //    按erc20的18位表示，即是1/10**(20-18) = 0
     function getUnderlyingPrice(uint256 underlying) public view returns (uint256) {
         AggregatorV3Interface assetsPrice = assetsMap[underlying];
         if (address(assetsPrice) != address(0)){
             (, int price, , ,) = assetsPrice.latestRoundData();
             uint256 tokenDecimals = decimalsMap[underlying];
-            if (tokenDecimals < 18){
+            if (tokenDecimals < 18){ // solidity不支持负数指数
                 return uint256(price)/decimals*(10**(18-tokenDecimals));
-            }else if (tokenDecimals > 18){
-                return uint256(price)/decimals/(10**(18-tokenDecimals));
+            }else if (tokenDecimals > 18){ // solidity不支持负数指数
+                return uint256(price)/decimals/(10**(tokenDecimals-18));
             }else{
                 return uint256(price)/decimals;
             }
