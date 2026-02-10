@@ -32,10 +32,11 @@ contract BscPledgeOracle is multiSignatureClient {
         for (uint256 i = 0; i < len; i++) {
             prices[i] = getUnderlyingPrice(assets[i]);
         }
+        return prices;
     }
 
     function getPrice(address asset) public view returns (uint256) {
-        return getUnderlyingPrice(uint256(asset));
+        return getUnderlyingPrice(uint256(uint160(asset)));
     }
 
     // *** 获取代币的最小底价 ***
@@ -62,7 +63,7 @@ contract BscPledgeOracle is multiSignatureClient {
     }
 
     function setPrice(address asset,uint256 price) public validCall {
-        priceMap[uint256(asset)] = price;
+        priceMap[uint256(uint160(asset))] = price;
     }
 
     function setUnderlyingPrice(uint256 underlying,uint256 price) public validCall {
@@ -71,8 +72,8 @@ contract BscPledgeOracle is multiSignatureClient {
     }
 
     function setAssetsAggregator(address asset,address aggergator,uint256 _decimals) public validCall {
-        assetsMap[uint256(asset)] = AggregatorV3Interface(aggergator);
-        decimalsMap[uint256(asset)] = _decimals;
+        assetsMap[uint256(uint160(asset))] = AggregatorV3Interface(aggergator);
+        decimalsMap[uint256(uint160(asset))] = _decimals;
     }
 
     function setUnderlyingAggregator(uint256 underlying,address aggergator,uint256 _decimals) public validCall {
@@ -82,7 +83,7 @@ contract BscPledgeOracle is multiSignatureClient {
     }
 
     function getAssetsAggregator(address asset) public view returns (address,uint256) {
-        return (address(assetsMap[uint256(asset)]),decimalsMap[uint256(asset)]);
+        return (address(assetsMap[uint256(uint160(asset))]),decimalsMap[uint256(uint160(asset))]);
     }
 
     function getUnderlyingAggregator(uint256 underlying) public view returns (address,uint256) {

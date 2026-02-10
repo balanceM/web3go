@@ -1,19 +1,19 @@
 // 注释：引入 Hardhat 集成工具箱（包含 ethers、chai、web3 等常用插件）
-// require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-toolbox");
 
 // 注释：引入 Hardhat Ignition 声明式合约部署系统
 // Ignition 用于管理和部署复杂的智能合约系统
 require("@nomicfoundation/hardhat-ignition");
 
-// 注释：引入 ethers.js 集成插件
-// 提供 ethers 对象，用于与以太坊网络交互（部署合约、发送交易等）
-// 新版本，替代已废弃的 @nomiclabs/hardhat-ethers
-require("@nomicfoundation/hardhat-ethers");
+// // 注释：引入 ethers.js 集成插件
+// // 提供 ethers 对象，用于与以太坊网络交互（部署合约、发送交易等）
+// // 新版本，替代已废弃的 @nomiclabs/hardhat-ethers
+// require("@nomicfoundation/hardhat-ethers");
 
-// 注释：引入 Web3.js 集成插件
-// 提供 web3 对象，是另一个以太坊交互库
-// 与 ethers.js 功能类似，但 API 不同，选择其中一个使用即可
-require("@nomiclabs/hardhat-web3");
+// // 注释：引入 Web3.js 集成插件
+// // 提供 web3 对象，是另一个以太坊交互库
+// // 与 ethers.js 功能类似，但 API 不同，选择其中一个使用即可
+// require("@nomiclabs/hardhat-web3");
 
 // 注释：引入 dotenv 配置管理
 // 从 .env 文件加载环境变量到 process.env
@@ -115,7 +115,7 @@ module.exports = {
         }
       },
       {
-        version: "0.8.0",
+        version: "0.8.20",
         settings: {
           optimizer: {
             enabled: true,
