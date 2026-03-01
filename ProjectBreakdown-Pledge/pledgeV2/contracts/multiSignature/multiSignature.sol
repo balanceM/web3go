@@ -54,11 +54,57 @@ contract multiSignature is multiSignatureClient{
     event SignApplication(address indexed from, bytes32 indexed msgHash, uint256 index);
     event RevokeApplication(address indexed from, bytes32 indexed msgHash, uint256 index);
 
-    constructor(address[] memory owners, uint256 limitedSignNum) multiSignatureClient(address(this)) public {
+    constructor(address[] memory owners, uint256 limitedSignNum) multiSignatureClient(address(this)) {
         require(owners.length >= limitedSignNum, "Multiple Signature: Signature threshold is greater than owner's length!");
         signatureOwners = owners;
         threshold = limitedSignNum;
     }
 
-    function transferOwner()
+    function transferOwner(uint256 index, address newOwner) public onlyOwner validCall {
+        require(index < signatureOwners.length, "Multiple Signature : Owner index is overflow!");
+        emit TransferOwner(msg.sender, signatureOwners[index], newOwner);
+        signatureOwners[index] = newOwner;
+    }
+
+    function createApplication(address to) external returns(uint256) {
+        bytes32 msghash = getApplicationHash(msg.sender, to);
+        uint256 index = signatureMap[msghash].length;
+        signatureMap[msghash].push(signatureInfo(msg.sender, new address[](0)));
+        emit CreateApplication(msg.sender, to, msghash);
+        return index;
+    }
+
+    function signApplication(bytes32 msghash) external onlyOwner validIndex(msghash, defaultIndex){
+        emit SignApplication(msg.sender, msghash, defaultIndex);
+        signatureMap[msghash][defaultIndex].signatures.addWhiteListAddress(msg.sender);
+    }
+
+    function revokeSignApplication(bytes32 msghash) external onlyOwner validIndex(msghash,defaultIndex){
+        emit RevokeApplication(msg.sender, msghash, defaultIndex);
+        signatureMap[msghash][defaultIndex].signatures.removeWhiteListAddress(msg.sender);
+    }
+
+    function getApplicationHash(address from, address to) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(from, to));
+    }
+
+    function getValidSignature(bytes32 msghash,uint256 lastIndex) external view returns(uint256){
+        signatureInfo[] storage info = signatureMap[msghash];
+        for (uint256 i=lastIndex;i<info.length;i++){
+            if(info[i].signatures.length >= threshold){
+                return i+1;
+            }
+        }
+        return 0;
+    }
+
+    modifier onlyOwner {
+        require(signatureOwners.isEligibleAddress(msg.sender), "Multiple Signature : caller is not in the ownerList!");
+        _;
+    }
+
+    modifier validIndex(bytes32 msghash, uint256 index) {
+        require(index < signatureMap[msghash].length, "Multiple Signature : Message index is overflow!");
+        _;
+    }
 }
